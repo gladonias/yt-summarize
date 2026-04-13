@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# yt_summarise.sh — macOS Version
+# yt_summarise.sh
 #
 # PURPOSE:
 #   Accepts a YouTube URL (from clipboard or argument) or a local audio file,
@@ -9,49 +9,84 @@
 #   file to your Documents folder.
 #
 # COMPATIBILITY:
-#   macOS Sequoia / Tahoe — Apple Silicon (M1/M2/M3) and Intel
+#   macOS, Linux, Windows (Git Bash / WSL)
 #
-# DEPENDENCIES (installed via Homebrew — see SETUP_GUIDE_MACOS.md):
-#   - yt-dlp          : brew install yt-dlp
-#   - ffmpeg          : brew install ffmpeg
-#   - whisper         : pip3 install openai-whisper
-#   - ollama          : brew install ollama  (or download from ollama.com)
-#   - jq              : brew install jq
+# DEPENDENCIES:
+#   - yt-dlp, ffmpeg, openai-whisper, ollama, jq, curl
+#   See README.md for installation instructions per platform.
 #
 # USAGE:
 #   ./yt_summarise.sh                  # reads YouTube URL from clipboard
 #   ./yt_summarise.sh <youtube_url>    # pass URL directly
 #   ./yt_summarise.sh <audio_file>     # pass a local audio file path
+#   ./yt_summarise.sh --output-dir DIR --model MODEL <input>
 # =============================================================================
 
 set -euo pipefail   # exit on error, unset variable, or pipe failure
 
 # =============================================================================
-# USER-CONFIGURABLE SETTINGS — edit these to match your setup
+# OS DETECTION
+# =============================================================================
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*)  echo "macos" ;;
+        Linux*)   echo "linux" ;;
+        CYGWIN*|MINGW*|MSYS*) echo "windows" ;;
+        *)        echo "unknown" ;;
+    esac
+}
+OS="$(detect_os)"
+
+# =============================================================================
+# DEFAULT SETTINGS
 # =============================================================================
 
-# Where finished Markdown summaries are saved
-# Change this to point directly at your Obsidian vault if you use one, e.g.:
-OUTPUT_DIR="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Pensieve/02 Resources/02.03 Summaries"
-# OUTPUT_DIR="$HOME/Documents/Summaries"
-
-# Path to your prompt instructions file
-PROMPT_FILE="$HOME/.config/yt_summarise/prompt_instructions.txt"
-
-# Ollama model to use
+OUTPUT_DIR="$HOME/Documents/Summaries"
+PROMPT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/yt_summarise/prompt_instructions.txt"
 OLLAMA_MODEL="gemma3:4b"
-
-# Ollama API endpoint — leave as-is unless you've changed Ollama's port
 OLLAMA_URL="http://localhost:11434/api/generate"
 OLLAMA_HEALTH_URL="http://localhost:11434/"
-
-# Whisper model size: tiny | base | small | medium | large
-# "base"  — faster, good for clear audio (~140MB download on first run)
-# "small" — slower, better accuracy for accents or technical content (~460MB)
 WHISPER_MODEL="base"
 
+# =============================================================================
+# LOAD CONFIG FILE (if it exists) — overrides defaults above
+# =============================================================================
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/yt_summarise/config"
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
+
+# =============================================================================
+# PARSE CLI FLAGS — override config and defaults
+# =============================================================================
+CLI_OUTPUT_DIR=""
+CLI_PROMPT_FILE=""
+CLI_MODEL=""
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-dir)
+            CLI_OUTPUT_DIR="$2"; shift 2 ;;
+        --prompt-file)
+            CLI_PROMPT_FILE="$2"; shift 2 ;;
+        --model)
+            CLI_MODEL="$2"; shift 2 ;;
+        *)
+            POSITIONAL_ARGS+=("$1"); shift ;;
+    esac
+done
+
+[[ -n "$CLI_OUTPUT_DIR" ]]  && OUTPUT_DIR="$CLI_OUTPUT_DIR"
+[[ -n "$CLI_PROMPT_FILE" ]] && PROMPT_FILE="$CLI_PROMPT_FILE"
+[[ -n "$CLI_MODEL" ]]       && OLLAMA_MODEL="$CLI_MODEL"
+
+# Restore positional arguments
+set -- "${POSITIONAL_ARGS[@]+"${POSITIONAL_ARGS[@]}"}"
+
 # Temporary working directory — cleaned up automatically on exit
-TEMP_DIR=$(mktemp -d /tmp/yt_summarise_XXXXXX)
+TEMP_DIR=$(mktemp -d)
 
 # =============================================================================
 # CLEANUP — runs automatically when the script exits (success or failure)
@@ -65,24 +100,59 @@ trap cleanup EXIT
 # HELPER FUNCTIONS
 # =============================================================================
 
-# macOS native notification via osascript (no extra tools needed)
+# Cross-platform desktop notification
 notify() {
     local title="$1"
     local message="$2"
-    osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true
+    case "$OS" in
+        macos)   osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true ;;
+        linux)   notify-send "$title" "$message" 2>/dev/null || true ;;
+        windows) powershell.exe -Command "[void](New-BurntToastNotification -Text '$title','$message')" 2>/dev/null || true ;;
+    esac
     echo "[INFO] $title: $message"
 }
 
 # Print an error message, send a notification, and exit
 die() {
     echo "[ERROR] $1" >&2
-    osascript -e "display notification \"$1\" with title \"yt_summarise — Error\" sound name \"Basso\"" 2>/dev/null || true
+    case "$OS" in
+        macos)   osascript -e "display notification \"$1\" with title \"yt_summarise — Error\" sound name \"Basso\"" 2>/dev/null || true ;;
+        linux)   notify-send "yt_summarise — Error" "$1" 2>/dev/null || true ;;
+        windows) powershell.exe -Command "[void](New-BurntToastNotification -Text 'yt_summarise — Error','$1')" 2>/dev/null || true ;;
+    esac
     exit 1
 }
 
 # Check that a required command exists on PATH
 require() {
-    command -v "$1" &>/dev/null || die "Required tool not found: '$1'. See SETUP_GUIDE_MACOS.md for installation instructions."
+    command -v "$1" &>/dev/null || die "Required tool not found: '$1'. See README.md for installation instructions."
+}
+
+# Cross-platform clipboard paste
+clipboard_paste() {
+    case "$OS" in
+        macos)   pbpaste 2>/dev/null ;;
+        linux)
+            if command -v xclip &>/dev/null; then
+                xclip -selection clipboard -o 2>/dev/null
+            elif command -v xsel &>/dev/null; then
+                xsel --clipboard --output 2>/dev/null
+            else
+                echo ""
+            fi
+            ;;
+        windows) powershell.exe -Command "Get-Clipboard" 2>/dev/null | tr -d '\r' ;;
+        *)       echo "" ;;
+    esac
+}
+
+# Cross-platform file opener
+open_file() {
+    case "$OS" in
+        macos)   open "$1" ;;
+        linux)   xdg-open "$1" 2>/dev/null ;;
+        windows) start "" "$1" 2>/dev/null ;;
+    esac
 }
 
 # =============================================================================
@@ -117,8 +187,8 @@ if [[ $# -ge 1 ]]; then
     # An argument was passed — could be a URL or a local file path
     INPUT="$1"
 else
-    # No argument — read from macOS clipboard using pbpaste (built into macOS)
-    INPUT=$(pbpaste 2>/dev/null || true)
+    # No argument — read from system clipboard
+    INPUT=$(clipboard_paste || true)
 fi
 
 [[ -z "$INPUT" ]] && die "No input provided and clipboard is empty. Copy a YouTube URL first."
@@ -366,4 +436,4 @@ echo "[INFO] All done. File saved to: $OUTPUT_FILE"
 
 # Optional: open the finished file in your default Markdown app automatically
 # Uncomment the line below to enable this
-# open "$OUTPUT_FILE"
+# open_file "$OUTPUT_FILE"
