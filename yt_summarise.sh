@@ -166,14 +166,14 @@ require jq
 
 # Check Ollama is actually running by hitting the root health endpoint
 curl -sf "$OLLAMA_HEALTH_URL" -o /dev/null --max-time 3 \
-    || die "Ollama is not running. Start it with: ollama serve\nOr launch the Ollama app from your Applications folder."
+    || die "Ollama is not running. Start it with: ollama serve"
 
 # Ensure the output directory exists, create it if not
 mkdir -p "$OUTPUT_DIR"
 
 # Ensure the prompt instructions file exists
 [[ -f "$PROMPT_FILE" ]] \
-    || die "Prompt instructions file not found at: $PROMPT_FILE\nSee SETUP_GUIDE_MACOS.md for how to create it."
+    || die "Prompt instructions file not found at: $PROMPT_FILE\nSee README.md for setup instructions."
 
 # =============================================================================
 # DETERMINE INPUT SOURCE
