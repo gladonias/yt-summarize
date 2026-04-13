@@ -98,6 +98,13 @@ OLLAMA_URL="http://localhost:11434/api/generate"
 
 CLI flags (`--output-dir`, `--prompt-file`, `--model`) take precedence over the config file.
 
+## Platform notes
+
+The script runs on **macOS**, **Linux**, and **Windows** (via Git Bash or WSL). OS-specific behaviour (clipboard, notifications, file opening) is detected automatically.
+
+- **Notifications**: macOS uses `osascript`, Linux uses `notify-send` (install `libnotify`), Windows uses PowerShell toast (optional `BurntToast` module). Notifications are non-blocking — the script works fine without them.
+- **Windows**: Run the script in Git Bash or WSL. All paths use `$HOME` which resolves correctly in both environments.
+
 ## Output
 
 Each summary is saved as a Markdown file with YAML frontmatter:
