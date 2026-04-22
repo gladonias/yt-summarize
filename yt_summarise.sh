@@ -420,23 +420,39 @@ OUTPUT_FILE="$OUTPUT_DIR/${SAFE_TITLE}.md"
 
 echo "[INFO] Writing Markdown file to: $OUTPUT_FILE"
 
-cat > "$OUTPUT_FILE" <<EOF
----
-original_title: "${VIDEO_TITLE}"
-source: "${VIDEO_URL}"
-date: "$(date +"%Y-%m-%d")"
-ollama_model: "${OLLAMA_MODEL}"
-whisper_model: "${WHISPER_MODEL}"
-tags: ${YAML_TAGS}
----
+# Capture the date once before building the file
+SUMMARY_DATE="$(date +"%Y-%m-%d")"
 
-# ${VIDEO_TITLE}
+# Encode every YAML scalar through jq so that special characters in
+# video titles and URLs (quotes, colons, backslashes, newlines) cannot
+# break the frontmatter structure. jq -n --arg passes the value as a
+# plain string and outputs it as a properly escaped, double-quoted JSON
+# string — which is also valid YAML scalar notation.
+YAML_TITLE=$(jq -n --arg v "$VIDEO_TITLE"  '$v')
+YAML_SOURCE=$(jq -n --arg v "$VIDEO_URL"   '$v')
+YAML_DATE=$(jq -n --arg v "$SUMMARY_DATE"  '$v')
+YAML_OLLAMA=$(jq -n --arg v "$OLLAMA_MODEL"  '$v')
+YAML_WHISPER=$(jq -n --arg v "$WHISPER_MODEL" '$v')
 
-${SUMMARY}
-
----
-*This summary was generated automatically using Whisper (${WHISPER_MODEL}) for transcription and ${OLLAMA_MODEL} via Ollama for summarisation.*
-EOF
+# Write the output file using printf so variable content is never
+# re-evaluated by the shell. Unlike an unquoted <<EOF heredoc, printf
+# '%s' writes the argument value byte-for-byte: $(), backticks, and
+# ${...} sequences inside $SUMMARY or $VIDEO_TITLE are inert.
+{
+    printf -- '---\n'
+    printf 'original_title: %s\n' "$YAML_TITLE"
+    printf 'source: %s\n'         "$YAML_SOURCE"
+    printf 'date: %s\n'           "$YAML_DATE"
+    printf 'ollama_model: %s\n'   "$YAML_OLLAMA"
+    printf 'whisper_model: %s\n'  "$YAML_WHISPER"
+    printf 'tags: %s\n'           "$YAML_TAGS"
+    printf -- '---\n'
+    printf '\n# %s\n\n'           "$VIDEO_TITLE"
+    printf '%s\n'                 "$SUMMARY"
+    printf '\n---\n'
+    printf '*This summary was generated automatically using Whisper (%s) for transcription and %s via Ollama for summarisation.*\n' \
+        "$WHISPER_MODEL" "$OLLAMA_MODEL"
+} > "$OUTPUT_FILE"
 
 # Send final success notification
 notify "yt_summarise — Done!" "Summary saved: $(basename "$OUTPUT_FILE")"
