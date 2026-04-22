@@ -280,20 +280,19 @@ echo "[INFO] Transcription complete ($WORD_COUNT words)."
 # Load your custom prompt instructions from the external file
 USER_INSTRUCTIONS=$(cat "$PROMPT_FILE")
 
-# Combine instructions with the transcript into a single prompt
-FULL_PROMPT="${USER_INSTRUCTIONS}
-
----
-
-VIDEO TITLE: ${VIDEO_TITLE}
-VIDEO URL: ${VIDEO_URL}
-
-TRANSCRIPT:
-${TRANSCRIPT}
-
----
-
-Now produce the structured Markdown summary as instructed above."
+# Combine instructions with the transcript into a single prompt.
+# jq --arg treats every value as a literal string — no shell evaluation
+# of backticks, $() or backslashes that may appear in the transcript.
+FULL_PROMPT=$(jq -rn \
+    --arg instructions "$USER_INSTRUCTIONS" \
+    --arg title        "$VIDEO_TITLE" \
+    --arg url          "$VIDEO_URL" \
+    --arg transcript   "$TRANSCRIPT" \
+    '$instructions
+     + "\n\n---\n\nVIDEO TITLE: " + $title
+     + "\nVIDEO URL: "             + $url
+     + "\n\nTRANSCRIPT:\n"         + $transcript
+     + "\n\n---\n\nNow produce the structured Markdown summary as instructed above."')
 
 # =============================================================================
 # STEP 4 — SUMMARISE WITH OLLAMA
