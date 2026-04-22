@@ -6,6 +6,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.2] — 2026-04-22
+
+### Fixed
+- **Windows PowerShell notification injection**: Single quotes in notification titles or messages (e.g. video titles containing `'`) broke the PowerShell single-quoted string syntax in `notify()` and `die()`. Both functions now escape every `'` as `''` (the PowerShell literal-quote convention) before embedding values into the `-Command` string.
+- **Unquoted heredoc shell expansion**: The output Markdown file was written with an unquoted `<<EOF` heredoc, meaning the shell could evaluate `$()`, backticks, and `${...}` sequences found in `$SUMMARY` or `$VIDEO_TITLE` before writing. The heredoc has been replaced with a `printf`-based block; `printf '%s'` writes variable content byte-for-byte with no re-evaluation.
+- **YAML frontmatter injection**: `VIDEO_TITLE` and `VIDEO_URL` were interpolated directly into YAML scalar positions. Special characters such as `"`, `:`, `\`, or embedded newlines could break the frontmatter structure or inject fake YAML keys. All scalar values are now encoded with `jq -n --arg v "…" '$v'`, which produces a properly escaped, double-quoted JSON string — a valid YAML scalar.
+
+---
+
 ## [1.1.1] — 2026-04-22
 
 ### Fixed

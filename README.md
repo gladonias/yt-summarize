@@ -1,6 +1,6 @@
 # yt-summarise
 
-[![Version](https://img.shields.io/badge/version-1.1.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.2-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A Bash script that downloads YouTube videos (or accepts local audio files), transcribes them with [Whisper](https://github.com/openai/whisper), and generates structured Markdown summaries using a local [Ollama](https://ollama.com) LLM. Output files include YAML frontmatter and are ready for use with Obsidian or any Markdown-based note system.
