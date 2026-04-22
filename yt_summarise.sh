@@ -107,7 +107,12 @@ notify() {
     case "$OS" in
         macos)   osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true ;;
         linux)   notify-send "$title" "$message" 2>/dev/null || true ;;
-        windows) powershell.exe -Command "[void](New-BurntToastNotification -Text '$title','$message')" 2>/dev/null || true ;;
+        windows)
+            # Escape single quotes for PowerShell single-quoted strings ('' = literal ')
+            local _ps_title="${title//\'/\'\'}"
+            local _ps_msg="${message//\'/\'\'}"
+            powershell.exe -Command "[void](New-BurntToastNotification -Text '$_ps_title','$_ps_msg')" 2>/dev/null || true
+            ;;
     esac
     echo "[INFO] $title: $message"
 }
@@ -118,7 +123,11 @@ die() {
     case "$OS" in
         macos)   osascript -e "display notification \"$1\" with title \"yt_summarise — Error\" sound name \"Basso\"" 2>/dev/null || true ;;
         linux)   notify-send "yt_summarise — Error" "$1" 2>/dev/null || true ;;
-        windows) powershell.exe -Command "[void](New-BurntToastNotification -Text 'yt_summarise — Error','$1')" 2>/dev/null || true ;;
+        windows)
+            # Escape single quotes for PowerShell single-quoted strings ('' = literal ')
+            local _ps_msg="${1//\'/\'\'}"
+            powershell.exe -Command "[void](New-BurntToastNotification -Text 'yt_summarise — Error','$_ps_msg')" 2>/dev/null || true
+            ;;
     esac
     exit 1
 }
